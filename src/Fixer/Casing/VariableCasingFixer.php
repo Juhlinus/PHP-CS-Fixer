@@ -12,29 +12,47 @@
 
 namespace PhpCsFixer\Fixer\Casing;
 
+use PhpCsFixer\Utils;
 use PhpCsFixer\AbstractFixer;
-use PhpCsFixer\FixerConfiguration\FixerConfigurationResolver;
-use PhpCsFixer\FixerConfiguration\FixerOptionBuilder;
-use PhpCsFixer\FixerDefinition\CodeSample;
-use PhpCsFixer\FixerDefinition\FixerDefinition;
-use PhpCsFixer\Fixer\ConfigurationDefinitionFixerInterface;
 use PhpCsFixer\Tokenizer\Token;
 use PhpCsFixer\Tokenizer\Tokens;
-use PhpCsFixer\Utils;
+use PhpCsFixer\FixerDefinition\CodeSample;
+use PhpCsFixer\FixerDefinition\FixerDefinition;
+use PhpCsFixer\FixerConfiguration\FixerOptionBuilder;
+use PhpCsFixer\Fixer\ConfigurationDefinitionFixerInterface;
+use PhpCsFixer\FixerConfiguration\FixerConfigurationResolver;
 
 /**
  * @author Linus Juhlin <linus.juhlin@protonmail.com>
  */
 final class VariableCasingFixer extends AbstractFixer implements ConfigurationDefinitionFixerInterface
 {
-	/**
-	 * @internal
-	 */
-	const CAMEL_CASE = 'camel_case';
-	/**
-	 * @internal
-	 */
-	const SNAKE_CASE = 'snake_case';
+    /**
+     * @internal
+     */
+    const CAMEL_CASE = 'camel_case';
+    /**
+     * @internal
+     */
+    const SNAKE_CASE = 'snake_case';
+
+    private $superGlobals = [
+        '$GLOBALS',
+        '$_SERVER',
+        '$_GET',
+        '$_POST',
+        '$_FILES',
+        '$_COOKIE',
+        '$_SESSION',
+        '$_REQUEST',
+        '$_ENV',
+    ];
+
+    private $accessors = [
+        'public',
+        'private',
+        'protected',
+    ];
 
     /**
      * {@inheritdoc}
@@ -58,23 +76,34 @@ $FUCK
      */
     public function isCandidate(Tokens $tokens)
     {
-    	return $tokens->isTokenKindFound(T_STRING);
+        return $tokens->isTokenKindFound(T_STRING);
     }
 
     /**
      * {@inheritdoc}
      */
-    protected function applyFix(\SplFileInfo $file, Tokens $tokens)
+    protected function applyFix(\SplFileInfo $file,
+        Tokens $tokens)
     {
-    	foreach ($tokens as $index => $token) {
-    		if (! $token->isGivenKind(T_VARIABLE)) {
-    			continue;
-    		}
+        foreach ($tokens as $index => $token) {
+            if (! $token->isGivenKind(T_VARIABLE)) {
+                continue;
+            }
 
-    		$newContent = $this->updateVariableCasing($token->getContent());
+            if (in_array($token->getContent(), $this->superGlobals)) {
+                continue;
+            }
+
+            $previous = $tokens->getPrevMeaningfulToken($index);
+
+            if (in_array($tokens[$previous]->getContent(), $this->accessors)) {
+                continue;
+            }
+
+            $newContent = $this->updateVariableCasing($token->getContent());
 
             $tokens[$index] = new Token([$token->getId(), $newContent]);
-    	}
+        }
     }
 
     /**
@@ -97,7 +126,7 @@ $FUCK
      */
     private function updateVariableCasing($variableName)
     {
-        if (self::CAMEL_CASE === $this->configuration['case']) {
+        if ($this->configuration['case'] === self::CAMEL_CASE) {
             $newVariableName = $variableName;
             $newVariableName = ucwords($newVariableName, '_');
             $newVariableName = str_replace('_', '', $newVariableName);
@@ -105,6 +134,7 @@ $FUCK
         } else {
             $newVariableName = Utils::camelCaseToUnderscore($variableName);
         }
+
         return $newVariableName;
     }
 }
